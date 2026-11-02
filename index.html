@@ -219,48 +219,49 @@
   const soundBtn = document.getElementById('sound');
   const video = document.getElementById('bg');
   const intro = document.getElementById('intro');
-  let soundOn = true, videoStarted = false;
+  const DUCK = 0.3;          // video volume while the intro clip plays
+  let soundOn = true;
   video.muted = true;
   try { video.load(); } catch (e) {}
 
   function applySound() {
     intro.muted = !soundOn;
-    if (videoStarted) video.muted = !soundOn;
+    video.muted = !soundOn;
     soundBtn.textContent = soundOn ? 'sound: on' : 'sound: off';
     soundBtn.setAttribute('aria-label', soundOn ? 'Mute sound' : 'Unmute sound');
   }
 
-  // The video (and its sound) starts once the intro clip is over
-  function startVideo() {
-    if (videoStarted) return;
-    videoStarted = true;
-    video.currentTime = 0;
-    video.muted = !soundOn;
-    video.play().catch(() => {
-      // If a browser refuses sound here, play muted and let the button turn it on
-      soundOn = false; video.muted = true;
-      video.play().catch(() => {});
-    }).finally(applySound);
+  // Bring the video's sound back up smoothly once the clip is over
+  function unduck() {
+    const from = video.volume, start = performance.now(), ms = 1200;
+    (function step(t) {
+      const k = Math.min(1, (t - start) / ms);
+      video.volume = from + (1 - from) * k;
+      if (k < 1) requestAnimationFrame(step);
+    })(start);
   }
-  intro.addEventListener('ended', startVideo);
-  intro.addEventListener('error', startVideo);
+  intro.addEventListener('ended', unduck);
+  intro.addEventListener('error', unduck);
 
   soundBtn.addEventListener('click', () => {
     soundOn = !soundOn;
     applySound();
-    if (videoStarted && video.paused) video.play().catch(() => {});
+    if (video.paused) video.play().catch(() => {});
   });
 
   btn.addEventListener('click', () => {
-    // Unlock the video for sound inside the click, then park it at the start
+    // Everything starts inside the click, so browsers allow the sound
+    intro.volume = 1;
+    video.volume = DUCK;
+    video.currentTime = 0;
     video.muted = false;
-    const unlock = video.play();
-    if (unlock) unlock.then(() => { if (!videoStarted) { video.pause(); video.currentTime = 0; } }).catch(() => {});
-    else { video.pause(); }
-
-    // Play the intro clip right away
+    video.play().catch(() => {
+      soundOn = false; video.muted = true;
+      video.play().catch(() => {});
+      applySound();
+    });
     intro.currentTime = 0;
-    intro.play().catch(startVideo);
+    intro.play().catch(unduck);
 
     btn.classList.add('gone');
     site.classList.add('on');
